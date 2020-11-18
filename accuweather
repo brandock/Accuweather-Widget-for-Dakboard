@@ -1,0 +1,470 @@
+
+<!DOCTYPE html><html><head>
+<script language="javascript" type="text/javascript" src="/emoncms/Lib/flot/jquery.js"></script>
+<script language="javascript" type="text/javascript" src="/emoncms/Lib/flot/jquery.flot.js"></script>
+<script language="javascript" type="text/javascript" src="/emoncms/Lib/flot/jquery.flot.barnumbers.enhanced.js"></script>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:100,300,400">
+<link rel="stylesheet" type="text/css" href="/dakboard/dakboard.css">
+
+<!--Need to override the background color to get transparent background,otherwise it is black.-->
+<style>
+        body, html {
+			background: transparent;
+			color: white;      
+			box-sizing: border-box;
+		}
+		*, *:before, *:after {
+			box-sizing: inherit;
+		}
+		.ontop {
+			margin: 0 auto;
+			width: 97%;
+			background-color: transparent;
+			color: white;
+			text-align: center;
+		}
+		@font-face {
+			font-family: weatherIcons;
+			src: url("/dakboard/artill_clean_icons.otf") format("opentype");
+		}		
+</style>
+
+<script type="text/javascript">
+
+$(function() {
+	function fetchData() {
+
+		/* getParameters function which may be useful in the future
+		function getParameter(paramName) {
+		  var searchString = window.location.search.substring(1),
+			  i, val, params = searchString.split("&");
+
+		  for (i=0;i<params.length;i++) {
+			val = params[i].split("=");
+			if (val[0] == paramName) {
+			  return val[1];
+			}
+		  }
+		  return null;
+		}
+	
+
+		var apikey = getParameter('apikey');
+		var locationkey = getParameter('locationkey');
+		var fetchURL = 'https://dataservice.accuweather.com/forecasts/v1/hourly/12hour/';
+		fetchURL += locationkey;
+		fetchURL += '?apikey=';
+		fetchURL += apikey;
+		
+		console.log('locationkey: ' + locationkey);
+		console.log('apikey: ' + apikey);
+		
+		*/
+		
+		
+		url12Hour = 'https://dakboard.baldockery.com/accuweather12Hour';
+		url5Day = 'https://dakboard.baldockery.com/accuweather5Day';
+		urlCurrentConditions = 'https://dakboard.baldockery.com/accuweatherCurrentConditions';
+		
+		iconMap = ["","1","1","2","A","B","A","3","C","","","&hellip;","K","J","J","Q","P","P","K","I","","1","1","2","A","B","A","3","C","","","&hellip;","K","J","J","Q","P","P","K","I","H","H","M","L","O","O","O","","O","O","&lsquo;","&OpenCurlyDoubleQuote;","&#44;","6","a","a","a","b","a","t","t","p","p","h","l"];
+		
+		data12Hour = {};
+		data5Day = {};
+		dataCurrentConditions = {};
+		
+		
+		
+		xAxisHourLabels = [];   //needs to be a global because it is populated by two different functions and then used by a third
+		xAxisDegreeLabels = [];  //we will shift the graph down and stretch it to give the bars height even in negative or very low temparatures, so we need labels with the actual temp
+								 //needs to be a global so that it can be used by the graphing function but populated by the data gathering function
+		
+		blank = '';
+		
+		function ajaxCall1(){
+			$.ajax({
+				url: url12Hour,
+				type: "GET",
+				dataType: 'json',
+				success: ajaxCall2
+			});
+
+		}
+		
+		function ajaxCall2(call1Result){
+			data12Hour = call1Result;
+			console.log('Got data from: ' + url12Hour);
+			$.ajax({
+				url: url5Day,
+				type: "GET",
+				dataType: 'json',
+				success: ajaxCall3
+			});
+		}
+		
+		function ajaxCall3(call2Result){
+			data5Day = call2Result;
+			console.log('Got data from: ' + url5Day);
+			$.ajax({
+				url: urlCurrentConditions,
+				type: "GET",
+				dataType: 'json',
+				success: onDataReceived
+			});
+		}
+		
+		function onDataReceived(call3Result) {
+			dataCurrentConditions = call3Result;
+			console.log('Got data from: ' + urlCurrentConditions);
+			//console.log(typeof data5Day);
+			
+			var plotData = []
+		
+			var xSeries = [];
+			
+			var yMax = 1;
+			var yMin = 32;
+			
+			hour = 0;
+			
+			//Current Conditions
+			//Temperature":{"Metric":{"Value":3.7,"Unit":"C","UnitType":17},"Imperial":{"Value":39,"Unit":"F","UnitType":18}},"MobileLink":"http://m.accuweather.com/en/us/middleton-wi/53562/current-weather/23242_pc?lang=en-us","Link":"http://www.accuweather.com/en/us/middleton-wi/53562/current-weather/23242_pc?lang=en-us"}]
+			var currentF = dataCurrentConditions[0].Temperature.Imperial.Value;
+			var currentC = dataCurrentConditions[0].Temperature.Metric.Value.toFixed(0);
+			var currentIconNumber = dataCurrentConditions[0].WeatherIcon;
+			var currentIconChar = iconMap[currentIconNumber];
+			
+			$("#currentTemps").html(currentF + '<sup>&deg</sup>');
+			$("#currentTempsC").html(currentC + '<sup>&degC</sup>');
+			$("#currentIcon").html(currentIconChar);
+			
+			
+			//Hourly Forecast: loop through the {records of each hour} in the [array returned from Accuweather] and make {[data], coloroptions} records in the plotData array
+			for (i = 0; i < data12Hour.length; i++) {
+				
+				//get the hour of each bar and push it into the x-axis grid labels
+				var a = new Date(data12Hour[i].DateTime);
+				var hour = a.getHours();
+
+				//create a series of the hours of each hourly forecast in the bar graph, push it into the array after the temps are pushed in
+				xSeries.push([i,hour]);
+				
+				//format the hour for display on the bars
+				if (hour < 12 ) {
+					if (hour == 0) {
+						hrLabel = '12am';
+					} else {
+						hrLabel = hour.toString() + "am";
+					}	
+				} else {
+					if (hour == 12) {
+						hrLabel = '12pm';
+					} else {
+						hrLabel = (hour-12).toString() + 'pm';
+					}
+				}
+				
+				xAxisHourLabels[hour]=hrLabel;
+				
+				//populate the data series of forecasted temps
+				//use x=i (for sorting the bars in order) and y=the temperature forecast for each bar
+				//make a separate data series for each point so each can be a different color
+				var temp = data12Hour[i].Temperature.Value;
+				if (temp > yMax) yMax = temp;
+				if (temp < yMin) yMin = temp;
+				
+				var barColor = 'rgb(255,204,0)'; //default color for bars if no match  
+				
+				//color the graph with green for rain, etc.
+				
+				var weatherIcon = data12Hour[i].WeatherIcon;
+				//var p = data12Hour[i].PrecipitationProbability;
+
+				if ((1 <= weatherIcon && weatherIcon <= 5) || (30 <= weatherIcon && weatherIcon <= 34)) barColor = 'rgb(255,204,0)'; // sunny range of icons = yellow
+				if ((6 <= weatherIcon && weatherIcon <= 11) || (35 <= weatherIcon && weatherIcon <= 38))barColor = 'rgb(153,153,153)'; // cloudy range of icons = gray
+				if ((12 <= weatherIcon && weatherIcon <= 18) || (39 <= weatherIcon && weatherIcon <= 42)) barColor = 'rgb(76,217,100)'; // rainy range of icons = green
+				if ((19 <= weatherIcon && weatherIcon <= 23) || (43 <= weatherIcon && weatherIcon <= 44)) barColor = 'rgb(90,200,250)'; // snow range of icons = blue
+				if (24 <= weatherIcon && weatherIcon <= 29) barColor = 'rgb(255,59,48)'; // ice-mix range of icons = red				if (weatherIcon > 29) console.log("WeatherIcon is 29 or greater and hasn't been mapped to a color. Icon: " + weatherIcon + "  i:" + i);
+
+				//plotData.push({data: [[i,temp]], color: barColor, bars: { numbers: {yOffset: 1000 }}});    //use the yOffset to "turn off" the default bar labels by hiding them. Other options stop the numbers plug-in too early.
+				plotData.push({data: [[i,temp]], color: barColor, bars: { numbers: {formatter: function(i) { return ''; }}}});    //use the yOffset to "turn off" the default bar labels by hiding them. Other options stop the numbers plug-in too early.
+//					plotData.push({data: [[i,temp]], color: barColor });    //use the yOffset to "turn off" the default bar labels by hiding them. Other options stop the numbers plug-in too early.
+																	//formatter: function(i) { return xAxisDegreeLabels[i]; },
+				xAxisDegreeLabels[hour]=temp;
+			}
+			
+			//5-Day Forecast: loop through the first couple {records of each day} in the [array returned from Accuweather 5-day] and make {[data], coloroptions} records in the plotData array
+			for (i = 1; i < 3; i++ ) {
+			
+				hour += 1; //continue the hour sequence established by the hourly forecast. We'll replace the value with a label, but this way we have a sequential index of y-values
+
+				
+				var a = new Date(data5Day.DailyForecasts[i].Date); // i = 0 is actually today in the AccuWeather 5-day data.
+				
+				var dayLabel = a.toLocaleDateString('en-US', {weekday: 'short'});
+
+				console.log('xSeries[xSeries.length-1] index: ' + xSeries[xSeries.length-1])
+				
+				xSeries.push([i+11.3,hour]);
+				
+				xAxisHourLabels[hour] = dayLabel;
+				
+				//var minTemp = data5Day.DailyForecasts[i].Temperature.Minimum.Value;
+				
+				//xAxisHourLabels[hour] += '<br>';
+				//xAxisHourLabels[hour] += minTemp;
+				
+				var temp = data5Day.DailyForecasts[i].Temperature.Maximum.Value;
+				if (temp > yMax) yMax = temp;
+				if (temp < yMin) yMin = temp;
+				
+				var minTemp = data5Day.DailyForecasts[i].Temperature.Minimum.Value;
+				
+				var weatherIcon = data5Day.DailyForecasts[i].Day.Icon;
+				//var weatherIconNight = data5Day.DailyForecasts[i].Day.Icon;
+				//var precipDay = data5Day.DailyForecasts[i].Day.PrecipitationProbability; 
+				//var precipNight = data5Day.DailyForecasts[i].Night.PrecipitationProbability; 
+				//var p = Math.max(precipDay, precipNight);
+
+				var barColor = "rgb(255,204,0)"; //default color for bars if no match				
+
+				if ((1 <= weatherIcon && weatherIcon <= 5) || (30 <= weatherIcon && weatherIcon <= 34)) barColor = 'rgb(255,204,0)'; // sunny range of icons = yellow
+				if ((6 <= weatherIcon && weatherIcon <= 11) || (35 <= weatherIcon && weatherIcon <= 38))barColor = 'rgb(153,153,153)'; // cloudy range of icons = gray
+				if ((12 <= weatherIcon && weatherIcon <= 18) || (39 <= weatherIcon && weatherIcon <= 42)) barColor = 'rgb(76,217,100)'; // rainy range of icons = green
+				if ((19 <= weatherIcon && weatherIcon <= 23) || (43 <= weatherIcon && weatherIcon <= 44)) barColor = 'rgb(90,200,250)'; // snow range of icons = blue
+				if (24 <= weatherIcon && weatherIcon <= 29) barColor = 'rgb(255,59,48)'; // ice-mix range of icons = red
+				
+				//var barColor = "rgb(255,204,0)"; //default color for bars if no match	
+				
+				plotData.push({data: [[i+11.3,temp]], color: barColor, bars: { numbers: {yOffset: 1000 }}});
+				//plotData.push({data: [[i+12,yMax]], bars: {fill: false,}});
+				
+				xAxisDegreeLabels[hour]=temp;
+			}
+
+			console.log('Before moving the graph ... Max, Min: ' + yMax + ', ' + yMin);
+		
+			var yPadding = (yMax - yMin) / 10;
+			
+			yMin -= (yMax - yMin);  //Keep the bottom half of the graph clear for the hour markings
+			
+			console.log('After moving the graph ... Max, Min, yPadding: ' + yMax + ', ' + yMin + ', ' + yPadding );
+
+			
+			/* Code to log the temperatures in the graph to the console 
+			   Use as a template for any loop that needs to look at the temperatures, for example a shift program to help with graphing low or negative temperatures 
+			var i;
+			for (i in plotData) {
+				console.log(plotData[i].data[0][1]);   //i is the index, 0-13. plotData[i] is an object with a data array and a color option. Each plotData[i].data an array with one array in it.
+													//Each plotData[i].data[0] is an 2D array of the form (hour, temp). Each temp is thus plotData[i].data[0][1]
+			}
+			*/
+			
+			var hourSeries = {
+				data: xSeries,
+				color: 'rgba(0,0,0,0)',
+				bars: {
+					fill: false ,
+					numbers : {
+						show: true ,
+						fill: false ,
+						yAlign: function(y) { return yMin; },
+						yOffset: -15,  //these control the height of the hour labels in each bar. -15 looks good, shifting them up toward the top of the bar (and into the bar a ways)
+						threshold: false, // these are hours, so 12am can get weird, you know?
+						formatter: function(i) { return xAxisHourLabels[i]; },
+						font: '10pt Roboto',   //Font for Hour Labels
+						fontColor: '#F8F8F8', //Color of Hour Labels
+					}
+				}
+			}
+			
+			
+			var degreeSeries = {
+				data: xSeries,
+				color: 'rgba(0,0,0,0)',
+				bars: {
+					fill: false ,
+					numbers : {
+						show: true ,
+						fill: false ,
+						yAlign: function(i) { return xAxisDegreeLabels[i]; },
+						yOffset: 22,  //
+						//threshold: 0.20, // any value higher than 20% of the maximum data point will display above the bar
+						formatter: function(i) { return xAxisDegreeLabels[i]; },
+						font: '18pt Roboto',   //Font for Degree Labels
+						fontColor: '#F8F8F8', //Color of Degree Labels
+					}
+				}
+			}
+			
+			
+			//if drawing outlines the following code can be used to draw a line across y=0 to form the bottom of the bars (top of negative bars)
+			//var markings = [];
+			//if (yMin <=0 ) markings.push( [{ yaxis: { from: 0, to: 0 }, color: "#FFFFFF", lineWidth: 3 }] );
+			//if (yMin >0 ) markings.push( [{ yaxis: { from: yMin, to: yMin }, color: "#FFFFFF", lineWidth: 3 }] );
+
+			var options = {
+				margin: {
+					bottom: -20
+				},
+				
+				grid : {
+					//markings: markings,
+					color: '#FFFFFF',
+					borderWidth: {
+						top: 0,
+						right: 0,
+						left: 0,
+						bottom: 0 //the "bottom" can be a marking of x=o on the y-axis set by the array markings.
+					},
+				},
+				
+				yaxis: {
+					ticks : [] , //using a marking instead of a tick, so we don't see the label
+					min: yMin - yPadding ,
+					max: yMax + yPadding ,
+					tickLength: 0 , 
+				},
+
+				xaxis: {
+					//ticks: xSeries,
+					ticks: [],
+					tickLength: 0 ,
+					color: '#FFFFFF',
+				},
+
+				series: {
+					bars: {
+						//align: 'center',
+						show: true,
+						fill: true,
+						barWidth: .9,
+						lineWidth: 0, //also match this to markings : lineWidth:  above
+						//showNumbers: true,   //Replaced showNumbers, which is built in to Flot, with numbers plug-in below
+						
+						numbers: {			   //numbers is a plug-in that makes it possible to format the and align the numbers shown on the bars of the bar graph	  
+							show: true		   //it is checked in the following order and will stop drawing numbers at the first level that doesn't show them: Options, degreeSeries, hourSeries (global options, then FIFO).
+						}, 
+											   
+					},		
+				}	
+			};
+			
+			plotData.push(degreeSeries);
+			plotData.push(hourSeries);
+
+			
+			$.plot("#placeholder", plotData, options);
+			
+			//$("#placeholder").find(".yAxis").hide();
+			
+			
+		} //end of onDataReceived
+		
+	ajaxCall1();
+	
+	} //end of fetchData
+
+	fetchData();
+	setInterval(fetchData, 5 * 60 * 1000); //in ms. If using stored data on Dakboard get as often as you like, otherwise consider API limits
+	
+});
+</script>
+
+<title>Accuweather Dakboard Widget</title>
+</head>
+
+<!--; for viewing white text in a normal browser use style=" background-color: #ccc" inside the div -->
+<body>
+
+<!--Current Conditions-->
+<div style = "margin: 0 auto; float: left; width:25%; height:100%;">
+
+	<!--Current Temperature Column-->
+	<div style = "float: right; width:auto; height:79%;">
+		<div style = "margin: 0 auto; width:100%; height:25%;"> <!--Spacer at top of current conditions-->
+		</div>
+		<div class="block weather block-weather align-right text-center" style=" margin-right:10;height:6.5%;color: #ffffff;font-family:'Roboto';font-size:18pt;z-index:117; padding: 0px;">
+			<div class="weather-container weather-condensed">
+				<div class="weather-item weather-current">
+					<div class="large">
+						<span id="currentTemps">-</span>
+					</div>
+				</div>
+				<div class="weather-item weather-current">
+					<div class="small">
+						<span id="currentTempsC">-</span>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+	
+	<!--Weather icon column-->
+	<div style = "float: right; width:auto; height:79%;">
+		<!--Spacer at top of current conditions-->
+		<div style = "margin: 0 auto; width:100%; height:20%;">
+		</div> 
+		<!--Weather block-->
+		<div class="block weather block-weather align-right text-right" style=" margin-right:10;height:6.5%;color: #ffffff;font-family:'weatherIcons';font-size:30pt;z-index:117;">
+			<!--Weather container-->
+			<div class="weather-container weather-condensed">
+				<!--Weather item-->
+				<div class="weather-item weather-current">
+					<div class="large" style="font-family:'weatherIcons';">
+						<!--<img width="150" align="middle"	border="-54" style="filter: invert(100%);" src="weather-svgs/weather_icons-03.svg">-->
+						<span id="currentIcon">-</span>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+</div>
+<!--Forecast Graph. The graph replaces the "placeholder" div, and the rest is the legend-->
+<div style = "margin: 0 auto; float: left; width:75%; height:100%;">
+	<div id="placeholder" style = "margin: 30 auto; width:100%; height:80%;"></div>
+	<div style = "margin: 0 auto; width:98.5%">
+		<div style="border 12 px; float: left; width: 20%; height: 10% ">
+				<div class="ontop">Clear</div>
+		</div>
+		
+		<div style="border 12 px; float: left; width: 20%; ">
+				<div class="ontop">Cloudy</div>
+		</div>
+
+		<div style="border 12 px; float: left; width: 20%; ">
+				<div class="ontop">Rain</div>
+		</div>
+		
+		<div style="border 12 px; float: left; width: 20%; ">
+				<div class="ontop">Snow</div>
+		</div>
+		
+		<div style="border 12 px; float: left; width: 20%; ">
+				<div class="ontop">Ice</div>
+		</div>
+	</div>
+	<div style = "margin: 0 auto; width:98.5%; height: 10%">
+		<div style="border 12 px; float: left; width: 20%; ">
+				<div style="text-align: center; margin: 0 auto; background-color: rgb(255,204,0); opacity: .4; color: #ffffff; width: 97% ">&nbsp;</div>
+		</div>
+		
+		<div style="border 12 px; float: left; width: 20%; ">
+				<div style="text-align: center;margin: 0 auto; background-color: rgb(153,153,153); opacity: .4; color: #ffffff; width: 97%;height: 10% ">&nbsp;</div>
+		</div>
+
+		<div style="border 12 px; float: left; width: 20%; ">
+				<div style="text-align: center;margin: 0 auto; background: rgb(76,217,100); opacity: .4; color: #ffffff; width: 97%;height: 10% ">&nbsp; </div>
+		</div>
+		
+		<div style="border 12 px; float: left; width: 20%; ">
+				<div style="text-align: center;margin: 0 auto; background: rgb(90,200,250); opacity: .4; color: #ffffff; width: 97%;height: 10% ">&nbsp; </div>
+		</div>
+		
+		<div style="border 12 px; float: left; width: 20%; ">
+				<div style="text-align: center;margin: 0 auto; background: rgb(255,59,48); opacity: .4; color: #ffffff; width: 97%;height: 10% ">&nbsp; </div>
+		</div>
+	</div>
+</div>
+</body>
+</html>
