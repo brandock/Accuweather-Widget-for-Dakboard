@@ -66,7 +66,7 @@ $(function() {
 		url5Day = 'https://dakboard.baldockery.com/accuweather5Day';
 		urlCurrentConditions = 'https://dakboard.baldockery.com/accuweatherCurrentConditions';
 		
-		iconMap = ["","1","1","2","A","B","A","3","C","","","&hellip;","K","J","J","Q","P","P","K","I","","1","1","2","A","B","A","3","C","","","&hellip;","K","J","J","Q","P","P","K","I","H","H","M","L","O","O","O","","O","O","&lsquo;","&OpenCurlyDoubleQuote;","&#44;","6","a","a","a","b","a","t","t","p","p","h","l"];
+		iconMap = ["","1","1","2","A","B","A","3","C","","","&hellip;","K","J","J","Q","P","P","K","I","H","H","M","L","O","O","O","","O","O","&lsquo;","&OpenCurlyDoubleQuote;","&#44;","6","a","a","a","b","a","t","t","p","p","h","l"];
 		
 		data12Hour = {};
 		data5Day = {};
